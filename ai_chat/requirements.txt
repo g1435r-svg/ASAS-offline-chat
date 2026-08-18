@@ -1,0 +1,4 @@
+flask
+colorama
+llama-cpp-python
+pyinstaller
