@@ -52,41 +52,60 @@ def build_prompt(history: list, user_message: str) -> str:
 def main() -> None:
     if not LLAMA_AVAILABLE:
         print(
-            f"{YELLOW}Warning: llama-cpp-python is not installed. "
-            f"Responses will not be generated.{RESET}"
+            f"{YELLOW}שגיאה: llama-cpp-python אינו מותקן. "
+            f"הרץ: pip install llama-cpp-python{RESET}"
         )
         sys.exit(1)
 
     model_path = find_model()
     if not model_path:
         print(
-            f"{YELLOW}No model found. Place a .gguf file in the models/ directory "
-            f"or set the MODEL_PATH environment variable.{RESET}"
+            f"{YELLOW}לא נמצא מודל. הנח קובץ .gguf בתיקיית models/ "
+            f"או הגדר את משתנה הסביבה MODEL_PATH.{RESET}"
         )
         sys.exit(1)
 
-    print(f"{CYAN}Loading model: {model_path}{RESET}")
+    print(f"{CYAN}טוען מודל: {model_path}{RESET}")
     llm = Llama(
         model_path=model_path,
         n_ctx=4096,
         n_threads=os.cpu_count() or 4,
         verbose=False,
     )
-    print(f"{GREEN}Model loaded. Type your message (or 'exit' to quit).{RESET}\n")
+    print(f"{GREEN}המודל נטען. כתוב הודעה (או /יציאה ליציאה).{RESET}\n")
 
     history: list = []
+
+    print(f"{YELLOW}פקודות: /יציאה  /היסטוריה  /נקה{RESET}\n")
+
     while True:
         try:
-            user_input = input(f"{CYAN}You: {RESET}").strip()
+            user_input = input(f"{CYAN}אתה: {RESET}").strip()
         except (EOFError, KeyboardInterrupt):
-            print("\nGoodbye!")
+            print("\nלהתראות!")
             break
 
         if not user_input:
             continue
-        if user_input.lower() in {"exit", "quit", "bye"}:
-            print("Goodbye!")
+
+        # Hebrew slash commands
+        if user_input in {"/יציאה", "exit", "quit", "bye"}:
+            print("להתראות!")
             break
+
+        if user_input == "/היסטוריה":
+            if not history:
+                print(f"{YELLOW}אין היסטוריית שיחה.{RESET}\n")
+            else:
+                for i, turn in enumerate(history, 1):
+                    print(f"{CYAN}[{i}] אתה:{RESET} {turn['user']}")
+                    print(f"{GREEN}[{i}] עוזר:{RESET} {turn['assistant']}\n")
+            continue
+
+        if user_input == "/נקה":
+            history.clear()
+            print(f"{YELLOW}ההיסטוריה נמחקה.{RESET}\n")
+            continue
 
         prompt = build_prompt(history, user_input)
         try:
@@ -98,10 +117,10 @@ def main() -> None:
             )
             reply = output["choices"][0]["text"].strip()
         except Exception as exc:  # noqa: BLE001
-            print(f"{YELLOW}Error generating response: {exc}{RESET}")
+            print(f"{YELLOW}שגיאה ביצירת תגובה: {exc}{RESET}")
             continue
 
-        print(f"{GREEN}Assistant: {RESET}{reply}\n")
+        print(f"{GREEN}עוזר: {RESET}{reply}\n")
         history.append({"user": user_input, "assistant": reply})
 
 
