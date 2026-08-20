@@ -7,6 +7,7 @@ Then open:  http://localhost:5000
 import os
 import datetime
 import json
+import sys
 
 from flask import Flask, render_template, request, jsonify, session
 
@@ -36,11 +37,17 @@ def get_llm() -> "Llama | None":
         return None
     model_path = os.environ.get("MODEL_PATH", "")
     if not model_path:
-        models_dir = os.path.join(os.path.dirname(__file__), "models")
-        if os.path.isdir(models_dir):
-            for fname in os.listdir(models_dir):
-                if fname.endswith(".gguf"):
-                    model_path = os.path.join(models_dir, fname)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        model_dirs = [os.path.join(base_dir, "models")]
+        if getattr(sys, "frozen", False):
+            model_dirs.append(os.path.join(os.path.dirname(sys.executable), "models"))
+        for models_dir in model_dirs:
+            if os.path.isdir(models_dir):
+                model_files = sorted(
+                    fname for fname in os.listdir(models_dir) if fname.endswith(".gguf")
+                )
+                if model_files:
+                    model_path = os.path.join(models_dir, model_files[0])
                     break
     if not model_path or not os.path.isfile(model_path):
         return None

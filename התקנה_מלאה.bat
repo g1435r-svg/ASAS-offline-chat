@@ -1,5 +1,6 @@
 @echo off
 chcp 65001 >nul
+cd /d "%~dp0"
 title התקנה מלאה - בינה מלאכותית בעברית
 
 echo ============================================
@@ -58,34 +59,9 @@ if errorlevel 1 (
 echo       התלויות הותקנו בהצלחה.
 echo.
 
-:: ── 4. Choose model ────────────────────────────────────────────────────────
-echo [4/5] בחר מודל להורדה:
-echo.
-echo   1. Mistral 7B Instruct Q4_K_M  (~4.1 GB) - מומלץ, איכות גבוהה
-echo   2. Llama 3.2 1B Instruct Q8_0  (~1.3 GB) - קטן ומהיר
-echo.
-
-:choose_model
-set /p MODEL_CHOICE="הזן 1 או 2 ואז Enter: "
-
-if "%MODEL_CHOICE%"=="1" (
-    set MODEL_FLAG=
-    echo.
-    echo מוריד מודל Mistral 7B...
-    goto download_model
-)
-if "%MODEL_CHOICE%"=="2" (
-    set MODEL_FLAG=--small
-    echo.
-    echo מוריד מודל Llama 1B...
-    goto download_model
-)
-
-echo בחירה לא חוקית. הזן 1 או 2.
-goto choose_model
-
-:download_model
-python ai_chat\download_model.py %MODEL_FLAG%
+:: ── 4. Download the default model ──────────────────────────────────────────
+echo [4/5] מוריד את המודל הקטן והמהיר בפעם הראשונה...
+python ai_chat\download_model.py --small
 if errorlevel 1 (
     echo.
     echo שגיאה: הורדת המודל נכשלה.
@@ -95,48 +71,12 @@ if errorlevel 1 (
 )
 echo.
 
-:: ── 5. Launch ──────────────────────────────────────────────────────────────
+:: ── 5. Launch automatically ────────────────────────────────────────────────
 echo [5/5] ההתקנה הושלמה בהצלחה!
 echo.
-echo ============================================
-echo   הכל מוכן! איך תרצה להפעיל?
-echo ============================================
-echo.
-echo   1. ממשק ווב  (http://localhost:5000)
-echo   2. שורת פקודה (CLI)
-echo   3. סיום (הפעל מאוחר יותר עם הפעל_WEB.bat / הפעל_CLI.bat)
-echo.
-
-:choose_launch
-set /p LAUNCH_CHOICE="הזן 1, 2 או 3 ואז Enter: "
-
-if "%LAUNCH_CHOICE%"=="1" goto launch_web
-if "%LAUNCH_CHOICE%"=="2" goto launch_cli
-if "%LAUNCH_CHOICE%"=="3" goto done
-
-echo בחירה לא חוקית. הזן 1, 2 או 3.
-goto choose_launch
-
-:launch_web
-echo.
-echo מפעיל ממשק ווב...
-echo פתח בדפדפן: http://localhost:5000
-echo לעצור: Ctrl+C
-echo.
-start "" cmd /c "timeout /t 2 >nul && start http://localhost:5000"
-cd ai_chat
-python app.py
-cd ..
-goto done
-
-:launch_cli
-echo.
-echo מפעיל שורת פקודה...
-echo.
-cd ai_chat
-python chat_cli.py
-cd ..
-goto done
+echo מפעיל את ממשק השיחה בדפדפן...
+call "%~dp0הפעל_WEB.bat"
+exit /b %errorlevel%
 
 :done
 echo.

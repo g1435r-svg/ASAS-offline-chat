@@ -33,11 +33,17 @@ def find_model() -> str:
     model_path = os.environ.get("MODEL_PATH", "")
     if model_path and os.path.isfile(model_path):
         return model_path
-    models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
-    if os.path.isdir(models_dir):
-        for fname in os.listdir(models_dir):
-            if fname.endswith(".gguf"):
-                return os.path.join(models_dir, fname)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    model_dirs = [os.path.join(base_dir, "models")]
+    if getattr(sys, "frozen", False):
+        model_dirs.append(os.path.join(os.path.dirname(sys.executable), "models"))
+    for models_dir in model_dirs:
+        if os.path.isdir(models_dir):
+            model_files = sorted(
+                fname for fname in os.listdir(models_dir) if fname.endswith(".gguf")
+            )
+            if model_files:
+                return os.path.join(models_dir, model_files[0])
     return ""
 
 

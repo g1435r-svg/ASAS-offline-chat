@@ -1,5 +1,6 @@
 @echo off
 chcp 65001 >nul
+cd /d "%~dp0"
 title הורדת מודל - Mistral 7B (מומלץ)
 echo ============================================
 echo   הורדת מודל Mistral 7B Instruct Q4_K_M

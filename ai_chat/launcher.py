@@ -7,6 +7,7 @@ a GGUF model without touching the command line.
 
 import os
 import sys
+import subprocess
 import threading
 import webbrowser
 import tkinter as tk
@@ -45,7 +46,12 @@ def _has_model() -> bool:
 
 
 def _run_server() -> None:
-    """Start the Flask app (imported here to keep the GUI responsive)."""
+    """Start the Flask server from source or from the packaged application."""
+    if getattr(sys, "frozen", False):
+        server_exe = os.path.join(os.path.dirname(sys.executable), "ASAS_server.exe")
+        subprocess.Popen([server_exe], cwd=os.path.dirname(server_exe))
+        return
+
     pkg_dir = os.path.dirname(os.path.abspath(__file__))
     if pkg_dir not in sys.path:
         sys.path.insert(0, pkg_dir)
