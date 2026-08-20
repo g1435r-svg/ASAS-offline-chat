@@ -33,11 +33,19 @@ def find_model() -> str:
     model_path = os.environ.get("MODEL_PATH", "")
     if model_path and os.path.isfile(model_path):
         return model_path
-    models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
-    if os.path.isdir(models_dir):
-        for fname in os.listdir(models_dir):
-            if fname.endswith(".gguf"):
-                return os.path.join(models_dir, fname)
+    # When frozen by PyInstaller, models live next to the executable.
+    if getattr(sys, "frozen", False):
+        candidates = [os.path.join(os.path.dirname(sys.executable), "models")]
+    else:
+        candidates = [
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "models"),
+            os.path.join(os.getcwd(), "models"),
+        ]
+    for models_dir in candidates:
+        if os.path.isdir(models_dir):
+            for fname in os.listdir(models_dir):
+                if fname.endswith(".gguf"):
+                    return os.path.join(models_dir, fname)
     return ""
 
 

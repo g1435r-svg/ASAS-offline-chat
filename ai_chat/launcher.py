@@ -1,11 +1,12 @@
 """
 ASAS – GUI launcher.
-Opens the Flask web server in a background thread and launches the browser.
+Opens the Flask web server in a background subprocess and launches the browser.
 On first run (no model found) shows a download dialog so the user can fetch
 a GGUF model without touching the command line.
 """
 
 import os
+import subprocess
 import sys
 import threading
 import webbrowser
@@ -35,8 +36,19 @@ MODELS = {
 }
 
 
+def _app_dir() -> str:
+    """Return the writable application directory.
+
+    When running as a PyInstaller frozen executable the models live next to the
+    EXE (``sys.executable``), not inside the bundled ``_MEIPASS`` resources.
+    """
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
 def _models_dir() -> str:
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+    return os.path.join(_app_dir(), "models")
 
 
 def _has_model() -> bool:
@@ -44,15 +56,17 @@ def _has_model() -> bool:
     return os.path.isdir(d) and any(f.endswith(".gguf") for f in os.listdir(d))
 
 
-def _run_server() -> None:
-    """Start the Flask app (imported here to keep the GUI responsive)."""
+def _run_server() -> "subprocess.Popen":
+    """Start the Flask app in a child process and return the handle."""
     pkg_dir = os.path.dirname(os.path.abspath(__file__))
-    if pkg_dir not in sys.path:
-        sys.path.insert(0, pkg_dir)
-
-    from app import app  # noqa: PLC0415
-
-    app.run(host=HOST, port=PORT, debug=False, use_reloader=False)
+    if getattr(sys, "frozen", False):
+        # Frozen: run the bundled server entry-point executable
+        exe_name = "ASAS_server.exe" if sys.platform == "win32" else "ASAS_server"
+        server_exe = os.path.join(os.path.dirname(sys.executable), exe_name)
+        cmd = [server_exe]
+    else:
+        cmd = [sys.executable, os.path.join(pkg_dir, "app.py")]
+    return subprocess.Popen(cmd)
 
 
 class DownloadDialog(tk.Toplevel):
@@ -106,40 +120,59 @@ class DownloadDialog(tk.Toplevel):
         os.makedirs(dest_dir, exist_ok=True)
         dest = os.path.join(dest_dir, info["filename"])
 
+        # Shared state updated by the worker thread; read by the UI via after().
+        self._dl_state: dict = {"pct": 0, "mb": 0.0, "mb_total": 0.0, "done": False, "error": None}
+        _lock = threading.Lock()
+
         def _hook(count: int, block: int, total: int) -> None:
             if total > 0:
                 pct = min(100, count * block * 100 // total)
-                self._progress["value"] = pct
                 mb = count * block / (1024 * 1024)
                 mb_total = total / (1024 * 1024)
-                self._status.config(text=f"{pct}%  {mb:.0f}/{mb_total:.0f} MB")
-                self.update_idletasks()
+                with _lock:
+                    self._dl_state["pct"] = pct
+                    self._dl_state["mb"] = mb
+                    self._dl_state["mb_total"] = mb_total
 
-        def _download() -> None:
-            try:
-                urllib.request.urlretrieve(info["url"], dest, reporthook=_hook)
-                self._status.config(text="ההורדה הושלמה!")
-                messagebox.showinfo(
-                    "הורדה הושלמה",
-                    f"המודל נשמר:\n{dest}",
-                    parent=self,
-                )
-                self.destroy()
-            except Exception as exc:
-                if os.path.isfile(dest):
-                    os.remove(dest)
-                messagebox.showerror("שגיאה", f"ההורדה נכשלה:\n{exc}", parent=self)
+        def _poll() -> None:
+            with _lock:
+                state = dict(self._dl_state)
+            if state["error"] is not None:
+                messagebox.showerror("שגיאה", f"ההורדה נכשלה:\n{state['error']}", parent=self)
                 self._dl_btn.config(state="normal")
                 self._combo.config(state="readonly")
                 self._status.config(text="")
                 self._progress["value"] = 0
+                return
+            if state["done"]:
+                self._progress["value"] = 100
+                self._status.config(text="ההורדה הושלמה!")
+                messagebox.showinfo("הורדה הושלמה", f"המודל נשמר:\n{dest}", parent=self)
+                self.destroy()
+                return
+            self._progress["value"] = state["pct"]
+            self._status.config(text=f"{state['pct']}%  {state['mb']:.0f}/{state['mb_total']:.0f} MB")
+            self.after(300, _poll)
+
+        def _download() -> None:
+            try:
+                urllib.request.urlretrieve(info["url"], dest, reporthook=_hook)
+                with _lock:
+                    self._dl_state["done"] = True
+            except Exception as exc:
+                if os.path.isfile(dest):
+                    os.remove(dest)
+                with _lock:
+                    self._dl_state["error"] = str(exc)
 
         threading.Thread(target=_download, daemon=True).start()
+        self.after(300, _poll)
 
 
 class LauncherApp(tk.Tk):
-    def __init__(self) -> None:
+    def __init__(self, server_proc: "subprocess.Popen") -> None:
         super().__init__()
+        self._server_proc = server_proc
         self.title("ASAS – בינה מלאכותית בעברית")
         self.resizable(False, False)
 
@@ -175,15 +208,21 @@ class LauncherApp(tk.Tk):
 
     def _quit(self) -> None:
         if messagebox.askyesno("יציאה", "לעצור את השרת ולצאת?"):
-            self.destroy()
-            os._exit(0)
+            try:
+                self._server_proc.terminate()
+                try:
+                    self._server_proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self._server_proc.kill()
+            finally:
+                self.destroy()
+                sys.exit(0)
 
 
 def main() -> None:
-    server_thread = threading.Thread(target=_run_server, daemon=True)
-    server_thread.start()
+    server_proc = _run_server()
 
-    root = LauncherApp()
+    root = LauncherApp(server_proc)
 
     # Show download dialog on first run if no model exists.
     if not _has_model():
